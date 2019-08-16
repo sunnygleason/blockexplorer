@@ -548,6 +548,33 @@ async function getClusterInfo() {
     return newc;
   });
 
+  let validators = _.map(votingNow, voteInfo => {
+    let nodeInfo = _.find(cluster, x => {
+      return x.pubkey == voteInfo.nodePubkey;
+    });
+    let voteStats = _.find(votingAll, x => {
+      return x.authorizedVoterPubkey == voteInfo.votePubkey;
+    });
+    let nodeUptime = _.find(uptime, x => {
+      return x.votePubkey == voteInfo.votePubkey;
+    });
+    let identity = _.find(identities, x => {
+      return x.pubkey == voteInfo.votePubkey;
+    });
+
+    let newInfo = {
+      votePubkey: voteInfo.votePubkey,
+      nodePubkey: nodeInfo && nodeInfo.pubkey,
+      voteInfo,
+      nodeInfo,
+      voteStats,
+      nodeUptime,
+      identity,
+    };
+
+    return newInfo;
+  });
+
   let rest = {
     feeCalculator,
     supply,
@@ -557,6 +584,7 @@ async function getClusterInfo() {
     identities,
     votingAll,
     votingNow,
+    validators,
     uptime,
     ts,
   };
