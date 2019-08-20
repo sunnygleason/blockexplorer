@@ -8,7 +8,8 @@ import {sync as commandExistsSync} from 'command-exists';
 
 import config from './config';
 
-const FULLNODE_URL = process.env.FULLNODE_URL || 'http://localhost:8899';
+const FULLNODE_URL =
+  process.env.FULLNODE_URL || 'http://edge.testnet.solana.com:8899';
 
 const REFRESH_INTERVAL = 10 * 60 * 1000; // 10min
 
@@ -31,47 +32,51 @@ function getVoteAccountUptime(x) {
   const t1 = new Date().getTime();
 
   const p = new Promise((resolve, reject) => {
-    exec(
-      `solana-wallet -u ${FULLNODE_URL} show-vote-account ${x.votePubkey}`,
-      (err, stdout, stderr) => {
-        const t2 = new Date().getTime();
+    if (!x.votePubkey || x.votePubkey.length !== 44) {
+      reject(`invalid pubkey: ${x}`);
+      return;
+    }
+    let command = `solana-wallet -u ${FULLNODE_URL} show-vote-account ${x.votePubkey}`;
+    // console.log(command);
+    exec(command, (err, stdout, stderr) => {
+      const t2 = new Date().getTime();
 
-        if (err) {
-          // node couldn't execute the command
-          console.log('err', err, stderr);
-          reject(err);
-          return;
-        }
+      if (err) {
+        // node couldn't execute the command
+        console.log('err', err, stderr);
+        reject(err);
+        return;
+      }
 
-        const result = YAML.parse(stdout);
+      const result = YAML.parse(stdout);
 
-        const uptime = _.reduce(
-          result['epoch voting history'],
-          (a, v) => {
-            a.unshift({
-              epoch: v.epoch,
-              credits_earned: v['credits earned'],
-              slots_in_epoch: v['slots in epoch'],
-              percentage: (
-                (v['credits earned'] * 1.0) /
-                (v['slots in epoch'] * 1.0)
-              ).toFixed(6),
-            });
-            return a;
-          },
-          [],
-        );
+      const uptime = _.reduce(
+        result['epoch voting history'],
+        (a, v) => {
+          a.unshift({
+            epoch: v.epoch,
+            credits_earned: v['credits earned'],
+            slots_in_epoch: v['slots in epoch'],
+            percentage: (
+              (v['credits earned'] * 1.0) /
+              (v['slots in epoch'] * 1.0)
+            ).toFixed(6),
+          });
+          return a;
+        },
+        [],
+      );
 
-        const uptimeValue = {
-          votePubkey: x.votePubkey,
-          uptime: uptime,
-          lat: t2 - t1,
-          ts: t1,
-        };
+      const uptimeValue = {
+        nodePubkey: result['node id'],
+        authorizedVoterPubkey: result['authorized voter pubkey'],
+        uptime: uptime,
+        lat: t2 - t1,
+        ts: t1,
+      };
 
-        resolve(uptimeValue);
-      },
-    );
+      resolve(uptimeValue);
+    });
   });
 
   return p;
@@ -80,9 +85,9 @@ function getVoteAccountUptime(x) {
 async function refreshUptime() {
   console.log('uptime updater: updating...');
   const connection = new solanaWeb3.Connection(FULLNODE_URL);
-  let voting = await connection.getEpochVoteAccounts();
+  let voting = await connection.getVoteAccounts();
 
-  const allTasks = _.map(voting, v => {
+  const allTasks = _.map(voting.current.concat(...voting.delinquent), v => {
     return getVoteAccountUptime(v);
   });
 
